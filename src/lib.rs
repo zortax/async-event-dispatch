@@ -172,8 +172,6 @@ impl<T: Clone + Send + 'static> Default for Dispatcher<T> {
 
 impl<T: Send + 'static> Drop for Dispatcher<T> {
   fn drop(&mut self) {
-    // blocking_read() is deadlock-safe as we do not hand out
-    // any guards and there aren't any references anymore
     if let Ok(rt) = tokio::runtime::Handle::try_current() {
       let subscribers = self.subscribers.clone();
       rt.spawn(async move {
@@ -182,6 +180,8 @@ impl<T: Send + 'static> Drop for Dispatcher<T> {
         }
       });
     } else {
+      // blocking_read() is deadlock-safe as we do not hand out
+      // any guards and there aren't any references anymore
       for subscriber in self.subscribers.blocking_read().iter() {
         subscriber.queue.push(Event::Close);
       }
@@ -218,5 +218,8 @@ mod tests {
     // no slow receiver issues
     assert_eq!(subscriber2.next().await, Some(42));
     assert_eq!(subscriber2.next().await, Some(69));
+
+    drop(dispatcher);
+    assert_eq!(subscriber2.next().await, None);
   }
 }
